@@ -144,10 +144,12 @@ Each entry has a header line (starts with `>`) followed by the amino acid sequen
 ### What to request from the researchers
 
 - [ ] FASTA file with the variant sequences (or a base protein + mutation list to generate one)
-- [ ] Approximate number of variants (tens? hundreds? thousands?) — affects runtime estimates
-- [ ] Available GPU hardware (model name, VRAM size) — determines what precision levels are feasible
-- [ ] Whether ESMFold / OpenFold are already installed on their machines
+- [x] Approximate number of variants — **tens of thousands** (this is the core motivation for the benchmark; at this scale, even a 1.5× speedup saves hours of compute per campaign)
+- [x] Available GPU hardware — **NVIDIA RTX 4060, 8 GB VRAM** (Ampere architecture; supports native BF16; 8 GB is tight for long sequences and will be a hard constraint for OpenFold with MSA — see note below)
+- [x] Whether ESMFold / OpenFold are already installed — **ESMFold: yes; OpenFold: not yet installed**
 - [ ] Preferred ranking score (default assumption: **mean pLDDT**)
+
+> **Hardware note (RTX 4060, 8 GB):** ESMFold weights alone are ~2.7 GB; with activations during inference of longer sequences (200+ residues), peak VRAM usage can reach 6–8 GB. Very long sequences may require chunked inference. OpenFold with full MSA is significantly more memory-hungry and may not fit in 8 GB for average-length proteins without memory optimizations (DeepSpeed, chunked attention). This is a known constraint for this proof-of-concept phase — cloud GPUs (A100 40/80 GB) are the target for the full-scale run.
 
 If the researchers don't have a ready variant set, a reasonable fallback is to pick a well-characterized protein from the [RCSB PDB](https://www.rcsb.org/) (e.g., GFP, lysozyme, or a kinase domain) and generate systematic single-point mutations. This produces hundreds of variants from one sequence and is standard practice for benchmarking.
 
