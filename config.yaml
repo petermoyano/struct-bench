@@ -1,0 +1,11 @@
+fasta_path: data/variants.fasta
+output_dir: results
+
+precisions:
+  - fp32
+  - bf16
+
+esmfold:
+  chunk_size: 64
+  max_recycles: 4
+  half_stem: true
