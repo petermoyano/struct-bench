@@ -1,1 +1,5 @@
-/.venv-esm
+.venv-esm/
+results/
+*.pyc
+__pycache__/
+.python-version

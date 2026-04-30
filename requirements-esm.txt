@@ -1,0 +1,8 @@
+torch>=2.2.0
+transformers>=4.40.0
+accelerate>=0.27.0
+scipy>=1.11.0
+pandas>=2.1.0
+matplotlib>=3.8.0
+biotite>=0.41.0
+pyyaml>=6.0
