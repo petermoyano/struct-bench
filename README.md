@@ -56,13 +56,13 @@ Key properties:
 - **Input**: a single amino acid sequence (string of letters like `MKTVRQERLK...`)
 - **Output**: a 3D structure (`.pdb` file) + per-residue confidence scores (pLDDT)
 - **Speed**: fast — no MSA computation needed, runs in seconds per sequence
-- **Install**: `pip install fair-esm[esmfold]` (also needs OpenFold as a dependency)
+- **Install**: via HuggingFace `transformers` (recommended) or `pip install fair-esm[esmfold]` (legacy, requires Python <= 3.9)
 - **Repo**: https://github.com/facebookresearch/esm (archived Aug 2024, still functional)
-- **PyPI package**: `fair-esm`
+- **PyPI package**: `fair-esm` (legacy) / `transformers` (recommended — no `openfold` dependency, works on Python 3.10+)
+- **HuggingFace model**: [`facebook/esmfold_v1`](https://huggingface.co/facebook/esmfold_v1) via `EsmForProteinFolding`
 - **Models available**: ESM-2 (8M to 15B params), ESMFold v0/v1
-- **HuggingFace**: also available via `transformers` library
 
-The repo is archived but the package and weights remain available. Context7 has 262 code snippets indexed under `/facebookresearch/esm`.
+The repo is archived but the weights remain available on HuggingFace Hub. This benchmark uses the `transformers` port, which has simplified dependencies and is actively maintained. Context7 has 262 code snippets indexed under `/facebookresearch/esm`.
 
 ### OpenFold
 
@@ -183,10 +183,13 @@ If the researchers don't have a ready variant set, a reasonable fallback is to p
 ## Suggested Project Structure
 
 ```
-precision-benchmark/
+struct-bench/
   README.md
-  requirements.txt
+  .python-version             # pyenv — locks Python 3.10.14 for this project
+  .gitignore
+  requirements-esm.txt        # pip deps for the ESMFold venv
   config.yaml                 # variant FASTA path, output dir, precision levels, etc.
+  .venv-esm/                  # ESMFold virtual environment (gitignored)
   data/
     variants.fasta            # input sequences (provided by researchers or generated)
   scripts/
@@ -211,7 +214,7 @@ precision-benchmark/
 
 | Model | Repo | Docs | Install | Context7 ID |
 |-------|------|------|---------|-------------|
-| ESMFold | [facebookresearch/esm](https://github.com/facebookresearch/esm) | [README](https://github.com/facebookresearch/esm/blob/main/README.md) | `pip install fair-esm[esmfold]` | `/facebookresearch/esm` (262 snippets) |
+| ESMFold | [facebookresearch/esm](https://github.com/facebookresearch/esm) | [HuggingFace docs](https://huggingface.co/docs/transformers/model_doc/esm) | `pip install transformers torch accelerate` | `/facebookresearch/esm` (262 snippets) |
 | OpenFold | [aqlaboratory/openfold](https://github.com/aqlaboratory/openfold) | [ReadTheDocs](https://openfold.readthedocs.io/en/latest/) | conda env + pip | `/aqlaboratory/openfold` (251 snippets) |
 
 ### Upstream pipeline tools (for context only — not part of this benchmark)
@@ -262,11 +265,110 @@ precision-benchmark/
 
 ---
 
-## How to Get Started
+## Getting Started
 
-1. **Get the input data** — request or generate the variant FASTA file
-2. **Set up ESMFold** — `pip install fair-esm[esmfold]` + verify a single prediction works at FP32
-3. **Set up OpenFold** — follow [installation docs](https://openfold.readthedocs.io/en/latest/), verify FP32 prediction works
-4. **Build the runner scripts** — each takes a FASTA + precision flag, outputs CSV with scores and timing
-5. **Run the benchmark** — all combinations of (model x precision x variant set)
-6. **Analyze and report** — compute ranking metrics, generate plots, write conclusions
+### Prerequisites
+
+- **OS**: Linux or WSL2 on Windows (tested on Ubuntu 24.04 under WSL2)
+- **GPU**: NVIDIA GPU with CUDA support (developed on RTX 4060, 8 GB; cloud A100 40/80 GB for full-scale runs)
+- **[pyenv](https://github.com/pyenv/pyenv)**: manages the Python version (similar to `nvm` for Node.js)
+
+### Why two environments?
+
+This benchmark tests two models with **incompatible dependency trees**:
+
+| Environment | Model | Managed by | Python | Key deps |
+|-------------|-------|-----------|--------|----------|
+| `.venv-esm` | ESMFold (via HuggingFace `transformers`) | **pyenv + venv + pip** | 3.10 | `transformers`, `torch`, `accelerate` |
+| `bench-openfold` | OpenFold | **conda / mamba** | Set by `environment.yml` | CUDA toolkit, HHsuite, OpenMM, DeepSpeed |
+
+ESMFold is accessed through the [HuggingFace `transformers` port](https://huggingface.co/facebook/esmfold_v1) (`EsmForProteinFolding`), which is actively maintained, works on modern Python, and has no dependency on the `openfold` pip package. The original `fair-esm[esmfold]` route requires Python <= 3.9 and fragile pinned dependencies — we avoid it.
+
+Both environments run scripts from **this single repo**. The output CSV format is identical regardless of which model produced it, so the analysis script (`analyze_rankings.py`) works in either environment.
+
+### Step 1 — Install pyenv and Python 3.10
+
+```bash
+# Install build dependencies (Ubuntu/Debian)
+sudo apt update && sudo apt install -y make build-essential libssl-dev zlib1g-dev \
+  libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm \
+  libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev \
+  libffi-dev liblzma-dev
+
+# Install pyenv
+curl https://pyenv.run | bash
+
+# Add to ~/.zshrc (or ~/.bashrc if using bash)
+echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.zshrc
+echo '[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.zshrc
+echo 'eval "$(pyenv init -)"' >> ~/.zshrc
+source ~/.zshrc
+
+# Install Python 3.10 and set it for this project
+pyenv install 3.10.14
+cd /path/to/struct-bench
+pyenv local 3.10.14    # creates .python-version file
+```
+
+### Step 2 — Create the ESMFold virtual environment
+
+```bash
+python -m venv .venv-esm
+source .venv-esm/bin/activate
+python -m pip install --upgrade pip
+pip install -r requirements-esm.txt   # once available
+```
+
+### Step 3 — (Later) Create the OpenFold conda environment
+
+OpenFold requires conda/mamba due to non-Python dependencies (C++ compilers, CUDA toolkit, bioinformatics binaries). This will be set up when we reach the OpenFold phase of the benchmark.
+
+```bash
+# Install Miniforge: https://github.com/conda-forge/miniforge
+git clone https://github.com/aqlaboratory/openfold.git /path/to/openfold
+cd /path/to/openfold
+mamba env create -n bench-openfold -f environment.yml
+conda activate bench-openfold
+```
+
+### Step 4 — Run the benchmark
+
+```bash
+# ESMFold (activate the venv first)
+source .venv-esm/bin/activate
+python scripts/run_esmfold.py --precision fp32
+python scripts/run_esmfold.py --precision bf16
+
+# OpenFold (activate the conda env first)
+conda activate bench-openfold
+python scripts/run_openfold.py --precision fp32
+python scripts/run_openfold.py --precision bf16
+
+# Analyze results (works in either environment)
+python scripts/analyze_rankings.py
+```
+
+### Everyday cheatsheet
+
+| Goal | Command |
+|------|---------|
+| Enter the project | `cd ~/struct-bench` (pyenv auto-selects Python 3.10) |
+| Activate ESMFold env | `source .venv-esm/bin/activate` |
+| Activate OpenFold env | `conda activate bench-openfold` |
+| Deactivate any env | `deactivate` (venv) or `conda deactivate` (conda) |
+| Check active Python | `python --version` and `which python` |
+| Install a package | `pip install something` |
+| Install from requirements | `pip install -r requirements-esm.txt` |
+| Check GPU visibility | `python -c "import torch; print(torch.cuda.is_available())"` |
+
+### Files not tracked by git
+
+The following should be in `.gitignore`:
+
+```
+.venv-esm/
+results/
+*.pyc
+__pycache__/
+.python-version
+```
